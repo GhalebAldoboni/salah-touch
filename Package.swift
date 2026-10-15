@@ -23,6 +23,11 @@ let package = Package(
                 .product(name: "PockKit", package: "pockkit")
             ],
             path: "Sources"
+        ),
+        .testTarget(
+            name: "PrayerTimeWidgetTests",
+            dependencies: ["PrayerTimeWidget"],
+            path: "Tests"
         )
     ]
 )
