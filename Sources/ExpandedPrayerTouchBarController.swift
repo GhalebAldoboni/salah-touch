@@ -59,6 +59,10 @@ final class ExpandedPrayerTouchBarController: PKTouchBarController {
     }
 
     override func dismiss() {
+        if isAnimatingClose {
+            finishAnimatedClose()
+            return
+        }
         super.dismiss()
         notifyClosed()
     }
@@ -68,6 +72,7 @@ final class ExpandedPrayerTouchBarController: PKTouchBarController {
             return
         }
         isAnimatingClose = true
+        scheduleCloseCleanup()
         super.minimize()
     }
 
@@ -76,6 +81,10 @@ final class ExpandedPrayerTouchBarController: PKTouchBarController {
             super.invalidateTouchBar()
             return
         }
+        scheduleCloseCleanup()
+    }
+
+    private func scheduleCloseCleanup() {
         guard closeCleanupScheduled == false else {
             return
         }
@@ -86,9 +95,15 @@ final class ExpandedPrayerTouchBarController: PKTouchBarController {
     }
 
     private func finishAnimatedClose() {
+        guard didNotifyClose == false else {
+            return
+        }
         isAnimatingClose = false
         closeCleanupScheduled = false
-        super.invalidateTouchBar()
+        // `minimize` has no tray target for external widgets, so always follow it
+        // with a real dismissal after the native reverse animation completes.
+        isVisible = true
+        super.dismiss()
         notifyClosed()
     }
 
@@ -131,9 +146,10 @@ final class ExpandedPrayerTouchBarController: PKTouchBarController {
             closeButton.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: 4),
             closeButton.centerYAnchor.constraint(equalTo: container.centerYAnchor),
 
-            locationLabel.trailingAnchor.constraint(equalTo: container.trailingAnchor, constant: -8),
+            locationLabel.leadingAnchor.constraint(equalTo: stack.trailingAnchor, constant: 8),
             locationLabel.centerYAnchor.constraint(equalTo: container.centerYAnchor),
-            locationLabel.widthAnchor.constraint(lessThanOrEqualToConstant: 180),
+            locationLabel.widthAnchor.constraint(equalToConstant: 125),
+            locationLabel.trailingAnchor.constraint(lessThanOrEqualTo: container.trailingAnchor, constant: -8),
 
             dismissButton.leadingAnchor.constraint(equalTo: container.leadingAnchor),
             dismissButton.trailingAnchor.constraint(equalTo: container.trailingAnchor),
@@ -194,8 +210,9 @@ final class ExpandedPrayerTouchBarController: PKTouchBarController {
     private func makeLocationLabel() -> NSTextField {
         let label = NSTextField(labelWithString: locationName)
         label.font = NSFont.systemFont(ofSize: 10, weight: .medium)
-        label.textColor = .secondaryLabelColor
-        label.alignment = .right
+        label.textColor = NSColor.white.withAlphaComponent(0.75)
+        label.alignment = language.isRightToLeft ? .right : .left
+        label.baseWritingDirection = language.isRightToLeft ? .rightToLeft : .leftToRight
         label.lineBreakMode = .byTruncatingTail
         label.maximumNumberOfLines = 1
         label.translatesAutoresizingMaskIntoConstraints = false
