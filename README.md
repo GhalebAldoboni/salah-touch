@@ -52,7 +52,7 @@ The expanded view shows all five prayers, the calculated night times, your locat
 3. Double-click the widget, or place it in:
 
    ```text
-   ~/Library/Application Support/Pock/Widgets/PrayerTimeWidget.pock
+   ~/Library/Application Support/Pock/Widgets/SalahTouch.pock
    ```
 
 4. Start Pock and add **SalahTouch** from the widget manager.
