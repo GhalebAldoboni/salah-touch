@@ -129,8 +129,8 @@ private func overviewView() -> NSView {
         Palette.canvas.setFill()
         bounds.fill()
 
-        drawText("Prayer Time for Pock", in: NSRect(x: 90, y: 530, width: 1220, height: 54), font: .systemFont(ofSize: 38, weight: .bold))
-        drawText("Official UAE Awqaf timings on your MacBook Touch Bar", in: NSRect(x: 90, y: 498, width: 1220, height: 30), font: .systemFont(ofSize: 18, weight: .medium), color: Palette.secondary)
+        drawText("SalahTouch", in: NSRect(x: 90, y: 530, width: 1220, height: 54), font: .systemFont(ofSize: 38, weight: .bold))
+        drawText("Prayer times, at your fingertips", in: NSRect(x: 90, y: 498, width: 1220, height: 30), font: .systemFont(ofSize: 18, weight: .medium), color: Palette.secondary)
 
         fillRounded(NSRect(x: 88, y: 346, width: 1224, height: 104), color: Palette.panel, radius: 8)
         drawText("NEXT PRAYER", in: NSRect(x: 116, y: 406, width: 170, height: 20), font: .systemFont(ofSize: 12, weight: .semibold), color: Palette.secondary, alignment: .left)

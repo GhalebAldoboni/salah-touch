@@ -1,8 +1,10 @@
 <div align="center">
 
-# Prayer Time for Pock
+# SalahTouch
 
-**Official UAE prayer times, iqama countdowns, and night calculations on the MacBook Touch Bar.**
+**Prayer times, at your fingertips.**
+
+Official UAE prayer times, iqama countdowns, and night calculations on the MacBook Touch Bar.
 
 [![macOS 10.15+](https://img.shields.io/badge/macOS-10.15%2B-111111?logo=apple&logoColor=white)](https://support.apple.com/macos)
 [![Swift 5.5+](https://img.shields.io/badge/Swift-5.5%2B-F05138?logo=swift&logoColor=white)](https://www.swift.org/)
@@ -10,11 +12,11 @@
 [![UAE Awqaf](https://img.shields.io/badge/timings-UAE%20Awqaf-00843D)](https://www.awqaf.gov.ae/prayer-times?lang=en)
 [![MIT License](https://img.shields.io/badge/license-MIT-yellow.svg)](LICENSE)
 
-![Prayer Time for Pock overview](docs/overview.png)
+![SalahTouch for Pock overview](docs/overview.png)
 
 </div>
 
-Prayer Time for Pock keeps the next salah visible without opening an app. It uses your Mac's location to select the nearest official UAE Awqaf area, refreshes every six hours, and keeps a cached schedule available between network requests.
+SalahTouch is a prayer-time extension built specifically for the MacBook Touch Bar through Pock. It keeps the next salah visible without opening an app, uses your Mac's location to select the nearest official UAE Awqaf area, refreshes every six hours, and keeps a cached schedule available between network requests.
 
 ## Highlights
 
@@ -45,7 +47,7 @@ The expanded view shows all five prayers, the calculated night times, your locat
 
 ### Download
 
-1. Download `PrayerTimeWidget.pock` from the [latest release](https://github.com/GhalebAldoboni/pock-prayer-time-widget/releases/latest).
+1. Download `SalahTouch.pock.zip` from the [latest release](https://github.com/GhalebAldoboni/salah-touch/releases/latest) and unzip it.
 2. Quit Pock.
 3. Double-click the widget, or place it in:
 
@@ -53,14 +55,14 @@ The expanded view shows all five prayers, the calculated night times, your locat
    ~/Library/Application Support/Pock/Widgets/PrayerTimeWidget.pock
    ```
 
-4. Start Pock and add **وقت الصلاة / Prayer Time** from the widget manager.
+4. Start Pock and add **SalahTouch** from the widget manager.
 5. Allow location access when macOS asks, or select manual coordinates in the widget settings.
 
 ### Build from source
 
 ```bash
-git clone https://github.com/GhalebAldoboni/pock-prayer-time-widget.git
-cd pock-prayer-time-widget
+git clone https://github.com/GhalebAldoboni/salah-touch.git
+cd salah-touch
 ./build-widget.sh
 ```
 
@@ -68,7 +70,7 @@ The signed development bundle is created at `build/PrayerTimeWidget.pock`.
 
 ## Configuration
 
-Open Pock's widget manager and select **وقت الصلاة / Prayer Time**.
+Open Pock's widget manager and select **SalahTouch**.
 
 | Setting | Options |
 |---|---|

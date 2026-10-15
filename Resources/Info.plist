@@ -13,7 +13,7 @@
 	<key>CFBundleName</key>
 	<string>PrayerTimeWidget</string>
 	<key>CFBundleDisplayName</key>
-	<string>وقت الصلاة</string>
+	<string>SalahTouch</string>
 	<key>CFBundlePackageType</key>
 	<string>BNDL</string>
 	<key>CFBundleShortVersionString</key>
@@ -29,8 +29,8 @@
 	<key>PKWidgetPreferenceClass</key>
 	<string>PrayerTimeWidget.PrayerTimeWidgetPreferences</string>
 	<key>NSLocationUsageDescription</key>
-	<string>PrayerTimeWidget uses your approximate location to find the nearest official UAE prayer time area.</string>
+	<string>SalahTouch uses your approximate location to find the nearest official UAE prayer time area.</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
-	<string>PrayerTimeWidget uses your approximate location to find the nearest official UAE prayer time area.</string>
+	<string>SalahTouch uses your approximate location to find the nearest official UAE prayer time area.</string>
 </dict>
 </plist>
