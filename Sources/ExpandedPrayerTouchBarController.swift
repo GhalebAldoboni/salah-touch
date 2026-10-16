@@ -32,8 +32,6 @@ final class ExpandedPrayerTouchBarController: PKTouchBarController {
     private var locationName = ""
     private var didNotifyClose = false
     private var isClosing = false
-    private weak var scheduleView: NSView?
-    private var closeFallback: DispatchWorkItem?
     private var countdownTimer: Timer?
     private var countdownLabels: [(label: NSTextField, target: Date)] = []
     var hasActiveCountdownTimer: Bool {
@@ -51,7 +49,6 @@ final class ExpandedPrayerTouchBarController: PKTouchBarController {
 
     deinit {
         countdownTimer?.invalidate()
-        closeFallback?.cancel()
     }
 
     convenience init(entries: [PrayerTouchBarEntry], language: PrayerLanguage, locationName: String) {
@@ -86,11 +83,7 @@ final class ExpandedPrayerTouchBarController: PKTouchBarController {
 
     override func dismiss() {
         isClosing = true
-        stopDynamicUpdates()
-        closeFallback?.cancel()
-        closeFallback = nil
-        super.dismiss()
-        notifyClosed()
+        finishClose()
     }
 
     override func minimize() {
@@ -102,51 +95,13 @@ final class ExpandedPrayerTouchBarController: PKTouchBarController {
             return
         }
         isClosing = true
-
-        guard isVisible else {
-            finishClose()
-            return
-        }
-
-        let fallback = DispatchWorkItem { [weak self] in
-            self?.finishClose()
-        }
-        closeFallback = fallback
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.24, execute: fallback)
-
-        guard let layer = scheduleView?.layer else {
-            finishClose()
-            return
-        }
-
-        CATransaction.begin()
-        CATransaction.setAnimationDuration(0.18)
-        CATransaction.setAnimationTimingFunction(CAMediaTimingFunction(name: .easeInEaseOut))
-        CATransaction.setCompletionBlock { [weak self] in
-            self?.finishClose()
-        }
-        let scale = CABasicAnimation(keyPath: "transform.scale.x")
-        scale.fromValue = 1
-        scale.toValue = 0.04
-        let fade = CABasicAnimation(keyPath: "opacity")
-        fade.fromValue = 1
-        fade.toValue = 0
-        let collapse = CAAnimationGroup()
-        collapse.animations = [scale, fade]
-        collapse.duration = 0.18
-        collapse.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
-        layer.opacity = 0
-        layer.transform = CATransform3DMakeScale(0.04, 1, 1)
-        layer.add(collapse, forKey: "PrayerTimeWidget.close")
-        CATransaction.commit()
+        finishClose()
     }
 
     private func finishClose() {
         guard didNotifyClose == false else {
             return
         }
-        closeFallback?.cancel()
-        closeFallback = nil
         stopDynamicUpdates()
         super.dismiss()
         notifyClosed()
@@ -178,9 +133,6 @@ final class ExpandedPrayerTouchBarController: PKTouchBarController {
 
         let container = NSView()
         container.translatesAutoresizingMaskIntoConstraints = false
-        container.wantsLayer = true
-        container.layer?.anchorPoint = CGPoint(x: 0.5, y: 0.5)
-        scheduleView = container
         let closeButton = makeCloseButton()
         closeButton.translatesAutoresizingMaskIntoConstraints = false
         let locationLabel = makeLocationLabel()
@@ -299,9 +251,10 @@ final class ExpandedPrayerTouchBarController: PKTouchBarController {
     }
 
     private func makeDismissSurfaceButton() -> NSButton {
-        let button = NSButton(title: "", target: self, action: #selector(close))
+        let button = NSButton(title: " ", target: self, action: #selector(close))
         button.isBordered = false
         button.focusRingType = .none
+        button.setButtonType(.momentaryPushIn)
         button.setAccessibilityLabel(
             language.isRightToLeft ? "إغلاق مواقيت الصلاة" : "Close prayer times"
         )
