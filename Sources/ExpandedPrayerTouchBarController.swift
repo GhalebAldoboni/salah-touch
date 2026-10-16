@@ -36,6 +36,9 @@ final class ExpandedPrayerTouchBarController: PKTouchBarController {
     private var closeFallback: DispatchWorkItem?
     private var countdownTimer: Timer?
     private var countdownLabels: [(label: NSTextField, target: Date)] = []
+    var hasActiveCountdownTimer: Bool {
+        return countdownTimer?.isValid == true
+    }
     var onClose: (() -> Void)?
 
     required init() {
@@ -44,6 +47,11 @@ final class ExpandedPrayerTouchBarController: PKTouchBarController {
 
     required init?(coder: NSCoder) {
         super.init(coder: coder)
+    }
+
+    deinit {
+        countdownTimer?.invalidate()
+        closeFallback?.cancel()
     }
 
     convenience init(entries: [PrayerTouchBarEntry], language: PrayerLanguage, locationName: String) {
@@ -77,8 +85,8 @@ final class ExpandedPrayerTouchBarController: PKTouchBarController {
     }
 
     override func dismiss() {
-        countdownTimer?.invalidate()
-        countdownTimer = nil
+        isClosing = true
+        stopDynamicUpdates()
         closeFallback?.cancel()
         closeFallback = nil
         super.dismiss()
@@ -90,10 +98,15 @@ final class ExpandedPrayerTouchBarController: PKTouchBarController {
     }
 
     private func beginClose() {
-        guard isVisible, isClosing == false else {
+        guard isClosing == false, didNotifyClose == false else {
             return
         }
         isClosing = true
+
+        guard isVisible else {
+            finishClose()
+            return
+        }
 
         let fallback = DispatchWorkItem { [weak self] in
             self?.finishClose()
@@ -134,8 +147,15 @@ final class ExpandedPrayerTouchBarController: PKTouchBarController {
         }
         closeFallback?.cancel()
         closeFallback = nil
+        stopDynamicUpdates()
         super.dismiss()
         notifyClosed()
+    }
+
+    private func stopDynamicUpdates() {
+        countdownTimer?.invalidate()
+        countdownTimer = nil
+        countdownLabels.removeAll()
     }
 
     private func notifyClosed() {
@@ -231,7 +251,7 @@ final class ExpandedPrayerTouchBarController: PKTouchBarController {
         return stack
     }
 
-    private func startCountdownTimerIfNeeded() {
+    func startCountdownTimerIfNeeded() {
         guard countdownTimer == nil else {
             return
         }

@@ -30,4 +30,16 @@ struct ExpandedPrayerTouchBarControllerTests {
         #expect(controller.isVisible == false)
         #expect(closeCount == 1)
     }
+
+    @Test func minimizingStopsCountdownUpdates() {
+        let controller = ExpandedPrayerTouchBarController()
+        controller.isVisible = true
+        controller.startCountdownTimerIfNeeded()
+
+        #expect(controller.hasActiveCountdownTimer)
+
+        controller.minimize()
+
+        #expect(controller.hasActiveCountdownTimer == false)
+    }
 }
