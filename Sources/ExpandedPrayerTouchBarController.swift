@@ -32,6 +32,8 @@ final class ExpandedPrayerTouchBarController: PKTouchBarController {
     private var locationName = ""
     private var didNotifyClose = false
     private var isClosing = false
+    private weak var scheduleView: NSView?
+    private var closeFallback: DispatchWorkItem?
     private var countdownTimer: Timer?
     private var countdownLabels: [(label: NSTextField, target: Date)] = []
     var hasActiveCountdownTimer: Bool {
@@ -49,6 +51,7 @@ final class ExpandedPrayerTouchBarController: PKTouchBarController {
 
     deinit {
         countdownTimer?.invalidate()
+        closeFallback?.cancel()
     }
 
     convenience init(entries: [PrayerTouchBarEntry], language: PrayerLanguage, locationName: String) {
@@ -95,13 +98,34 @@ final class ExpandedPrayerTouchBarController: PKTouchBarController {
             return
         }
         isClosing = true
-        finishClose()
+        stopDynamicUpdates()
+
+        guard isVisible, let scheduleView = scheduleView else {
+            finishClose()
+            return
+        }
+
+        let fallback = DispatchWorkItem { [weak self] in
+            self?.finishClose()
+        }
+        closeFallback = fallback
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2, execute: fallback)
+
+        NSAnimationContext.runAnimationGroup { context in
+            context.duration = 0.14
+            context.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+            scheduleView.animator().alphaValue = 0
+        } completionHandler: { [weak self] in
+            self?.finishClose()
+        }
     }
 
     private func finishClose() {
         guard didNotifyClose == false else {
             return
         }
+        closeFallback?.cancel()
+        closeFallback = nil
         stopDynamicUpdates()
         super.dismiss()
         notifyClosed()
@@ -133,6 +157,7 @@ final class ExpandedPrayerTouchBarController: PKTouchBarController {
 
         let container = NSView()
         container.translatesAutoresizingMaskIntoConstraints = false
+        scheduleView = container
         let closeButton = makeCloseButton()
         closeButton.translatesAutoresizingMaskIntoConstraints = false
         let locationLabel = makeLocationLabel()
