@@ -9,6 +9,7 @@ enum PrayerTimeKeys {
     static let manualLongitude = "PrayerTimeWidget.manualLongitude"
     static let defaultIqamaMinutes = "PrayerTimeWidget.defaultIqamaMinutes"
     static let maghribIqamaMinutes = "PrayerTimeWidget.maghribIqamaMinutes"
+    static let asrSchool = "PrayerTimeWidget.asrSchool"
     static let scheduleCache = "PrayerTimeWidget.cachedSchedule"
     static let locationCache = "PrayerTimeWidget.cachedLocation"
 }
@@ -47,6 +48,7 @@ struct PrayerTimeSettings {
     let manualLongitude: Double
     let defaultIqamaMinutes: Int
     let maghribIqamaMinutes: Int
+    let asrSchool: PrayerAsrSchool
 
     static let defaultLanguage = PrayerLanguage.arabic
     static let defaultLocationMode = PrayerLocationMode.automatic
@@ -54,6 +56,7 @@ struct PrayerTimeSettings {
     static let defaultLongitude = 55.2708
     static let defaultIqamaMinutes = 20
     static let defaultMaghribIqamaMinutes = 5
+    static let defaultAsrSchool = PrayerAsrSchool.standard
 
     static func load() -> PrayerTimeSettings {
         let defaults = UserDefaults.standard
@@ -71,6 +74,9 @@ struct PrayerTimeSettings {
             defaultValue: defaultMaghribIqamaMinutes,
             range: 0...120
         )
+        let asrSchool = PrayerAsrSchool(
+            rawValue: defaults.integer(forKey: PrayerTimeKeys.asrSchool)
+        ) ?? defaultAsrSchool
 
         return PrayerTimeSettings(
             language: language,
@@ -78,7 +84,8 @@ struct PrayerTimeSettings {
             manualLatitude: latitude,
             manualLongitude: longitude,
             defaultIqamaMinutes: defaultIqama,
-            maghribIqamaMinutes: maghribIqama
+            maghribIqamaMinutes: maghribIqama,
+            asrSchool: asrSchool
         )
     }
 
@@ -91,6 +98,7 @@ struct PrayerTimeSettings {
             PrayerTimeKeys.manualLongitude,
             PrayerTimeKeys.defaultIqamaMinutes,
             PrayerTimeKeys.maghribIqamaMinutes,
+            PrayerTimeKeys.asrSchool,
             PrayerTimeKeys.scheduleCache,
             PrayerTimeKeys.locationCache
         ].forEach(defaults.removeObject(forKey:))
@@ -130,7 +138,7 @@ struct PrayerTimeSettings {
 public final class PrayerTimeWidget: NSObject, PKWidget {
     public static let identifier = "com.ghalebaldoboni.pock.prayertime"
 
-    public var customizationLabel = "وقت الصلاة"
+    public var customizationLabel = "SalahTouch"
     public var view: NSView!
 
     private enum Defaults {
@@ -189,6 +197,7 @@ public final class PrayerTimeWidget: NSObject, PKWidget {
     private let expandButton = NSButton(title: "", target: nil, action: nil)
     private let locationManager = CLLocationManager()
     private let geocoder = CLGeocoder()
+    private let alAdhanClient = AlAdhanScheduleClient()
 
     private var timer: Timer?
     private var settings = PrayerTimeSettings.load()
@@ -197,9 +206,11 @@ public final class PrayerTimeWidget: NSObject, PKWidget {
     private var lastFetchAt: Date?
     private var lastFetchAttemptAt: Date?
     private var currentLocation: CLLocation?
+    private var currentCountryCode: String?
     private var locationDisplayName: String?
     private var isFetching = false
     private var isLocating = false
+    private var fetchGeneration = 0
     private var expandedController: ExpandedPrayerTouchBarController?
 
     public required override init() {
@@ -340,11 +351,14 @@ public final class PrayerTimeWidget: NSObject, PKWidget {
         settings = PrayerTimeSettings.load()
         applyLanguageLayout()
         currentLocation = nil
+        currentCountryCode = nil
         locationDisplayName = nil
         geocoder.cancelGeocode()
         prayerMoments = []
         lastFetchAt = nil
         lastFetchAttemptAt = nil
+        fetchGeneration += 1
+        isFetching = false
         displayTimeZone = TimeZone.current
         UserDefaults.standard.removeObject(forKey: PrayerTimeKeys.scheduleCache)
         loadCachedState()
@@ -391,29 +405,50 @@ public final class PrayerTimeWidget: NSObject, PKWidget {
         }
 
         isFetching = true
+        fetchGeneration += 1
+        let generation = fetchGeneration
         lastFetchAttemptAt = Date()
         if hasDisplayablePrayer() == false {
             setStatus(localizedStatus(arabic: "جار التحميل", english: "Loading"))
+        }
+
+        guard PrayerScheduleRouting.source(
+            for: location.coordinate,
+            countryCode: currentCountryCode
+        ) == .awqaf else {
+            fetchAlAdhanSchedule(
+                for: date,
+                coordinate: location.coordinate,
+                generation: generation
+            )
+            return
         }
 
         fetchAwqafToken { [weak self] token in
             guard let self = self else {
                 return
             }
-
-            guard let token = token else {
-                DispatchQueue.main.async {
-                    self.isFetching = false
-                    if self.hasDisplayablePrayer() == false {
-                        self.setStatus(self.localizedStatus(arabic: "لا يوجد اتصال", english: "Offline"))
+            DispatchQueue.main.async {
+                guard self.fetchGeneration == generation else { return }
+                guard let token = token else {
+                    self.finishFetchWithNoData(generation: generation)
+                    return
+                }
+                self.fetchAwqafCity(for: location.coordinate, token: token) { city in
+                    DispatchQueue.main.async {
+                        guard self.fetchGeneration == generation else { return }
+                        guard let city = city else {
+                            self.finishFetchWithNoData(generation: generation)
+                            return
+                        }
+                        self.fetchAwqafSchedule(
+                            for: date,
+                            city: city,
+                            token: token,
+                            generation: generation
+                        )
                     }
                 }
-                return
-            }
-
-            self.fetchAwqafCity(for: location.coordinate, token: token) { city in
-                let selectedCity = city ?? AwqafCityResponse(emirate: 2, cityID: 32)
-                self.fetchAwqafSchedule(for: date, city: selectedCity, token: token)
             }
         }
     }
@@ -453,8 +488,8 @@ public final class PrayerTimeWidget: NSObject, PKWidget {
     ) {
         var components = URLComponents(string: "https://mobileappapi.awqaf.gov.ae/APIS/v3/prayer-time/city-by-coordinates")
         components?.queryItems = [
-            URLQueryItem(name: "latitude", value: String(format: "%.6f", locale: Locale(identifier: "en_US_POSIX"), coordinate.latitude)),
-            URLQueryItem(name: "longitude", value: String(format: "%.6f", locale: Locale(identifier: "en_US_POSIX"), coordinate.longitude))
+            URLQueryItem(name: "latitude", value: String(format: "%.3f", locale: Locale(identifier: "en_US_POSIX"), coordinate.latitude)),
+            URLQueryItem(name: "longitude", value: String(format: "%.3f", locale: Locale(identifier: "en_US_POSIX"), coordinate.longitude))
         ]
 
         guard let url = components?.url else {
@@ -478,7 +513,12 @@ public final class PrayerTimeWidget: NSObject, PKWidget {
         }.resume()
     }
 
-    private func fetchAwqafSchedule(for date: Date, city: AwqafCityResponse, token: String) {
+    private func fetchAwqafSchedule(
+        for date: Date,
+        city: AwqafCityResponse,
+        token: String,
+        generation: Int
+    ) {
         let timezone = TimeZone(identifier: "Asia/Dubai") ?? TimeZone.current
         let formatter = DateFormatter()
         formatter.locale = Locale(identifier: "en_US_POSIX")
@@ -494,7 +534,7 @@ public final class PrayerTimeWidget: NSObject, PKWidget {
         let end = formatter.string(from: endDate)
 
         guard let url = URL(string: "https://mobileappapi.awqaf.gov.ae/APIS/v3/prayer-time/prayertimes/\(start)/\(end)") else {
-            finishFetchWithNoData()
+            finishFetchWithNoData(generation: generation)
             return
         }
 
@@ -507,16 +547,10 @@ public final class PrayerTimeWidget: NSObject, PKWidget {
                 return
             }
 
-            defer {
-                DispatchQueue.main.async {
-                    self.isFetching = false
-                }
-            }
-
             guard error == nil,
                   let data = data,
                   let response = try? JSONDecoder().decode(AwqafScheduleResponse.self, from: data) else {
-                self.finishFetchWithNoData()
+                self.finishFetchWithNoData(generation: generation)
                 return
             }
 
@@ -528,12 +562,14 @@ public final class PrayerTimeWidget: NSObject, PKWidget {
             )
 
             guard moments.isEmpty == false else {
-                self.finishFetchWithNoData()
+                self.finishFetchWithNoData(generation: generation)
                 return
             }
 
             DispatchQueue.main.async {
+                guard self.fetchGeneration == generation else { return }
                 let fetchedAt = Date()
+                self.isFetching = false
                 self.displayTimeZone = timezone
                 self.lastFetchAt = fetchedAt
                 self.prayerMoments = moments
@@ -543,8 +579,44 @@ public final class PrayerTimeWidget: NSObject, PKWidget {
         }.resume()
     }
 
-    private func finishFetchWithNoData() {
+    private func fetchAlAdhanSchedule(
+        for date: Date,
+        coordinate: CLLocationCoordinate2D,
+        generation: Int
+    ) {
+        alAdhanClient.fetch(
+            around: date,
+            coordinate: coordinate,
+            school: settings.asrSchool
+        ) { [weak self] schedule in
+            guard let self = self else { return }
+            guard let schedule = schedule, schedule.moments.isEmpty == false else {
+                self.finishFetchWithNoData(generation: generation)
+                return
+            }
+            let moments = schedule.moments.map {
+                PrayerMoment(key: $0.key, date: $0.date)
+            }
+            DispatchQueue.main.async {
+                guard self.fetchGeneration == generation else { return }
+                let fetchedAt = Date()
+                self.isFetching = false
+                self.displayTimeZone = schedule.timezone
+                self.lastFetchAt = fetchedAt
+                self.prayerMoments = moments
+                self.saveCachedSchedule(
+                    moments: moments,
+                    timezone: schedule.timezone,
+                    fetchedAt: fetchedAt
+                )
+                self.updateNextPrayer()
+            }
+        }
+    }
+
+    private func finishFetchWithNoData(generation: Int) {
         DispatchQueue.main.async {
+            guard self.fetchGeneration == generation else { return }
             self.isFetching = false
             if self.hasDisplayablePrayer() == false {
                 self.setStatus(self.localizedStatus(arabic: "لا توجد بيانات", english: "No data"))
@@ -952,6 +1024,9 @@ public final class PrayerTimeWidget: NSObject, PKWidget {
             abs($0.coordinate.latitude - location.coordinate.latitude) > 0.001
                 || abs($0.coordinate.longitude - location.coordinate.longitude) > 0.001
         } ?? true
+        if coordinateChanged {
+            currentCountryCode = nil
+        }
         guard coordinateChanged || locationDisplayName == nil else {
             return
         }
@@ -966,11 +1041,27 @@ public final class PrayerTimeWidget: NSObject, PKWidget {
                 ?? placemark.subAdministrativeArea
                 ?? placemark.administrativeArea
                 ?? placemark.name
-            guard let name = name, name.isEmpty == false else {
-                return
-            }
             DispatchQueue.main.async {
-                self.locationDisplayName = name
+                guard let current = self.currentLocation,
+                      abs(current.coordinate.latitude - location.coordinate.latitude) <= 0.001,
+                      abs(current.coordinate.longitude - location.coordinate.longitude) <= 0.001 else {
+                    return
+                }
+                let fallbackSource = PrayerScheduleRouting.source(for: location.coordinate)
+                let resolvedSource = PrayerScheduleRouting.source(
+                    for: location.coordinate,
+                    countryCode: placemark.isoCountryCode
+                )
+                self.currentCountryCode = placemark.isoCountryCode
+                if let name = name, name.isEmpty == false {
+                    self.locationDisplayName = name
+                }
+                if fallbackSource != resolvedSource {
+                    self.fetchGeneration += 1
+                    self.isFetching = false
+                    self.lastFetchAt = nil
+                    self.fetchPrayerTimesIfNeeded(force: true)
+                }
             }
         }
     }
@@ -1113,6 +1204,7 @@ public final class PrayerTimeWidgetPreferences: NSViewController, PKWidgetPrefer
 
     private let languagePopup = NSPopUpButton()
     private let locationModePopup = NSPopUpButton()
+    private let asrSchoolPopup = NSPopUpButton()
     private let latitudeField = NSTextField(string: "")
     private let longitudeField = NSTextField(string: "")
     private let defaultIqamaField = NSTextField(string: "")
@@ -1120,7 +1212,7 @@ public final class PrayerTimeWidgetPreferences: NSViewController, PKWidgetPrefer
     private let statusLabel = NSTextField(labelWithString: "")
 
     public override func loadView() {
-        view = NSView(frame: NSRect(x: 0, y: 0, width: 420, height: 240))
+        view = NSView(frame: NSRect(x: 0, y: 0, width: 420, height: 280))
         view.translatesAutoresizingMaskIntoConstraints = false
         buildView()
         loadSettingsIntoControls()
@@ -1139,7 +1231,7 @@ public final class PrayerTimeWidgetPreferences: NSViewController, PKWidgetPrefer
         stack.spacing = 10
         stack.translatesAutoresizingMaskIntoConstraints = false
 
-        let title = NSTextField(labelWithString: "Prayer Time")
+        let title = NSTextField(labelWithString: "SalahTouch")
         title.font = NSFont.systemFont(ofSize: 15, weight: .semibold)
 
         configurePopup(languagePopup, items: [
@@ -1149,6 +1241,10 @@ public final class PrayerTimeWidgetPreferences: NSViewController, PKWidgetPrefer
         configurePopup(locationModePopup, items: [
             ("Use device location", 0),
             ("Manual coordinates", 1)
+        ])
+        configurePopup(asrSchoolPopup, items: [
+            ("Standard (Shafi, Maliki, Hanbali)", PrayerAsrSchool.standard.rawValue),
+            ("Hanafi", PrayerAsrSchool.hanafi.rawValue)
         ])
 
         [latitudeField, longitudeField, defaultIqamaField, maghribIqamaField].forEach(configureTextField)
@@ -1163,6 +1259,7 @@ public final class PrayerTimeWidgetPreferences: NSViewController, PKWidgetPrefer
         stack.addArrangedSubview(makeRow(title: "Location", control: locationModePopup))
         stack.addArrangedSubview(makeRow(title: "Latitude", control: latitudeField))
         stack.addArrangedSubview(makeRow(title: "Longitude", control: longitudeField))
+        stack.addArrangedSubview(makeRow(title: "Asr method", control: asrSchoolPopup))
         stack.addArrangedSubview(makeRow(title: "Iqama minutes", control: defaultIqamaField))
         stack.addArrangedSubview(makeRow(title: "Maghrib iqama", control: maghribIqamaField))
         stack.addArrangedSubview(saveButton)
@@ -1211,6 +1308,7 @@ public final class PrayerTimeWidgetPreferences: NSViewController, PKWidgetPrefer
         locationModePopup.selectItem(withTag: settings.locationMode == .automatic ? 0 : 1)
         latitudeField.stringValue = String(format: "%.6f", locale: Locale(identifier: "en_US_POSIX"), settings.manualLatitude)
         longitudeField.stringValue = String(format: "%.6f", locale: Locale(identifier: "en_US_POSIX"), settings.manualLongitude)
+        asrSchoolPopup.selectItem(withTag: settings.asrSchool.rawValue)
         defaultIqamaField.stringValue = "\(settings.defaultIqamaMinutes)"
         maghribIqamaField.stringValue = "\(settings.maghribIqamaMinutes)"
     }
@@ -1232,6 +1330,7 @@ public final class PrayerTimeWidgetPreferences: NSViewController, PKWidgetPrefer
         defaults.set(longitude, forKey: PrayerTimeKeys.manualLongitude)
         defaults.set(defaultIqama, forKey: PrayerTimeKeys.defaultIqamaMinutes)
         defaults.set(maghribIqama, forKey: PrayerTimeKeys.maghribIqamaMinutes)
+        defaults.set(asrSchoolPopup.selectedTag(), forKey: PrayerTimeKeys.asrSchool)
         defaults.removeObject(forKey: PrayerTimeKeys.scheduleCache)
         defaults.synchronize()
 
