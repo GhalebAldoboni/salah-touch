@@ -6,6 +6,21 @@ struct PrayerTouchBarEntry {
     let time: String
     let isUpcomingPrayer: Bool
     let isNightMarker: Bool
+    let countdownTarget: Date?
+
+    func displayedTime(at date: Date) -> String {
+        guard let countdownTarget = countdownTarget else {
+            return time
+        }
+        let totalSeconds = max(0, Int(ceil(countdownTarget.timeIntervalSince(date))))
+        return String(format: "%02d:%02d", totalSeconds / 60, totalSeconds % 60)
+    }
+}
+
+enum ExpandedPrayerPresentation {
+    static func highlightedPrayerDate(nextPrayer: Date?, activeIqamaPrayer: Date?) -> Date? {
+        return activeIqamaPrayer ?? nextPrayer
+    }
 }
 
 final class ExpandedPrayerTouchBarController: PKTouchBarController {
@@ -19,6 +34,8 @@ final class ExpandedPrayerTouchBarController: PKTouchBarController {
     private var isClosing = false
     private weak var scheduleView: NSView?
     private var closeFallback: DispatchWorkItem?
+    private var countdownTimer: Timer?
+    private var countdownLabels: [(label: NSTextField, target: Date)] = []
     var onClose: (() -> Void)?
 
     required init() {
@@ -60,6 +77,8 @@ final class ExpandedPrayerTouchBarController: PKTouchBarController {
     }
 
     override func dismiss() {
+        countdownTimer?.invalidate()
+        countdownTimer = nil
         closeFallback?.cancel()
         closeFallback = nil
         super.dismiss()
@@ -183,7 +202,7 @@ final class ExpandedPrayerTouchBarController: PKTouchBarController {
         nameLabel.lineBreakMode = .byTruncatingTail
         nameLabel.maximumNumberOfLines = 1
 
-        let timeLabel = NSTextField(labelWithString: entry.time)
+        let timeLabel = NSTextField(labelWithString: entry.displayedTime(at: Date()))
         timeLabel.font = NSFont.monospacedDigitSystemFont(ofSize: 10, weight: .semibold)
         timeLabel.textColor = .white
         timeLabel.alignment = .center
@@ -205,7 +224,32 @@ final class ExpandedPrayerTouchBarController: PKTouchBarController {
             stack.widthAnchor.constraint(equalToConstant: width),
             stack.heightAnchor.constraint(equalToConstant: 30)
         ])
+        if let target = entry.countdownTarget {
+            countdownLabels.append((label: timeLabel, target: target))
+            startCountdownTimerIfNeeded()
+        }
         return stack
+    }
+
+    private func startCountdownTimerIfNeeded() {
+        guard countdownTimer == nil else {
+            return
+        }
+        countdownTimer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
+            self?.updateCountdownLabels()
+        }
+    }
+
+    private func updateCountdownLabels() {
+        let now = Date()
+        countdownLabels.forEach { item in
+            let totalSeconds = max(0, Int(ceil(item.target.timeIntervalSince(now))))
+            item.label.stringValue = String(
+                format: "%02d:%02d",
+                totalSeconds / 60,
+                totalSeconds % 60
+            )
+        }
     }
 
     private func makeCloseButton() -> NSButton {

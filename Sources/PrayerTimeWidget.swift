@@ -822,7 +822,12 @@ public final class PrayerTimeWidget: NSObject, PKWidget {
 
     private func expandedScheduleEntries(at date: Date) -> [PrayerTouchBarEntry] {
         let nextPrayer = prayerMoments.first(where: { $0.date > date })
-        let referenceDate = nextPrayer?.date ?? date
+        let activeIqama = activeIqamaMoment(at: date)
+        let highlightedDate = ExpandedPrayerPresentation.highlightedPrayerDate(
+            nextPrayer: nextPrayer?.date,
+            activeIqamaPrayer: activeIqama?.prayer.date
+        )
+        let referenceDate = highlightedDate ?? date
         var calendar = Calendar(identifier: .gregorian)
         calendar.timeZone = displayTimeZone
 
@@ -830,11 +835,18 @@ public final class PrayerTimeWidget: NSObject, PKWidget {
             calendar.isDate($0.date, inSameDayAs: referenceDate)
         }
         let prayerEntries = displayedPrayers.map { prayer in
-            PrayerTouchBarEntry(
+            let isActiveIqama = prayer.date == activeIqama?.prayer.date
+            let countdownTarget = isActiveIqama
+                ? prayer.date.addingTimeInterval(TimeInterval(settings.iqamaMinutes(for: prayer.key) * 60))
+                : nil
+            return PrayerTouchBarEntry(
                 name: prayerName(for: prayer.key),
-                time: timeString(from: prayer.date),
-                isUpcomingPrayer: prayer.date == nextPrayer?.date,
-                isNightMarker: false
+                time: isActiveIqama
+                    ? countdownString(from: activeIqama?.remaining ?? 0)
+                    : timeString(from: prayer.date),
+                isUpcomingPrayer: prayer.date == highlightedDate,
+                isNightMarker: false,
+                countdownTarget: countdownTarget
             )
         }
 
@@ -847,13 +859,15 @@ public final class PrayerTimeWidget: NSObject, PKWidget {
                 name: localizedStatus(arabic: "منتصف الليل", english: "Midnight"),
                 time: timeString(from: night.midnight),
                 isUpcomingPrayer: false,
-                isNightMarker: true
+                isNightMarker: true,
+                countdownTarget: nil
             ),
             PrayerTouchBarEntry(
                 name: localizedStatus(arabic: "الثلث الأخير من الليل", english: "Last third of night"),
                 time: timeString(from: night.lastThirdStart),
                 isUpcomingPrayer: false,
-                isNightMarker: true
+                isNightMarker: true,
+                countdownTarget: nil
             )
         ]
     }
